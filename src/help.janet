@@ -107,6 +107,9 @@
       ))))
 
 (defn group [spec]
+  (def outbuf @"")
+  (setdyn :out outbuf)
+
   # TODO: word wrap
   (def {:doc docstring :commands commands} spec)
   (case (util/type+ docstring)
@@ -122,7 +125,10 @@
 
   (case (util/type+ docstring)
     :struct       (when (docstring :epilogue) (print) (print-wrapped (docstring :epilogue) desired-width))
-    :table        (when (docstring :epilogue) (print) (print-wrapped (docstring :epilogue) desired-width))))
+    :table        (when (docstring :epilogue) (print) (print-wrapped (docstring :epilogue) desired-width)))
+  
+  (file/write stdout outbuf)
+  (setdyn :out stdout))
 
 (defn- default-description [param]
   (case ((param :handler) :value)
@@ -131,6 +137,9 @@
     ))
 
 (defn simple [spec]
+  (def outbuf @"")
+  (setdyn :out outbuf)
+
   (def {:named named-params
         :names param-names
         :pos positional-params
@@ -178,4 +187,7 @@
 
   (case (util/type+ docstring)
     :struct (when (docstring :epilogue) (do (print "debug") (file/flush stdout) (print-wrapped (docstring :epilogue) desired-width)))
-    :table  (when (docstring :epilogue) (do (print "debug") (file/flush stdout) (print-wrapped (docstring :epilogue) desired-width)))))
+    :table  (when (docstring :epilogue) (do (print "debug") (file/flush stdout) (print-wrapped (docstring :epilogue) desired-width))))
+
+  (file/write stdout outbuf)
+  (setdyn :out stdout))
