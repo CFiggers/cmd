@@ -12,6 +12,7 @@
 (defn- word-wrap-line [line len]
   (def lines @[])
   (var current-line @"")
+  (def pad (or (first (peg/match '(<- :s+) line)) ""))
   (each word (string/split " " line)
     (when (and (not (empty? current-line))
              (>= (+ (length current-line) 1 (length word)) len))
@@ -21,7 +22,7 @@
       (buffer/push-string current-line " "))
     (buffer/push-string current-line word))
   (array/push lines current-line)
-  lines)
+  (map |(string pad $) lines))
 
 (defn- word-wrap [str len]
   (mapcat |(word-wrap-line $ len) (string/split "\n" str)))
@@ -100,11 +101,11 @@
   (each [lefts docstring] entries
     (def rights (word-wrap docstring (max (/ desired-width 2) (- desired-width left-column-width))))
 
-    (zip-lines lefts rights (fn [first? last? left right]
-      (def sep (if (empty? right) "" (if first? sep "   ")))
-      (def pad-to (if (empty? right) 0 left-column-width))
-      (print "  " (right-pad left pad-to) sep right)
-      ))))
+    (zip-lines lefts rights
+               (fn [first? last? left right]
+                 (def sep (if (empty? right) "" (if first? sep (string/repeat " " (length sep)))))
+                 (def pad-to (if (empty? right) 0 (+ left-column-width (if first? 0 2))))
+                 (print "  " (right-pad left pad-to) sep right)))))
 
 (defn group [spec]
   (def outbuf @"")
@@ -119,9 +120,12 @@
     :table        (when (docstring :doc) (print-wrapped (docstring :doc) desired-width))
     (print))
 
+  (print "\nCommands:\n")
   (def commands (sorted-by 0 (pairs commands)))
 
   # TODO: bit of code duplication here
+  (print-columns "      " (seq [[name command] :in commands]
+                            [[name] (docstring-summary command)]))
 
   (case (util/type+ docstring)
     :struct       (when (docstring :epilogue) (print) (print-wrapped (docstring :epilogue) desired-width))
