@@ -16,9 +16,11 @@
   (os/exit 1))
 
 (defn- potential-docstring? [node]
-  (case (type+ node)
+  (case (util/type+ node)
     :tuple-parens true
     :string true
+    :table true
+    :struct true
     false))
 
 # TODO: the representation of having the :help

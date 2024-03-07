@@ -90,7 +90,10 @@
         (string/join detail "\n"))])))
 
 (defn docstring-summary [{:doc str}]
-  (or (first (parse-docstring str)) ""))
+  (case (util/type+ str)
+    :string (or (first (parse-docstring str)) "")
+    :struct (or (first (parse-docstring (str :doc))) "")
+    :table  (or (first (parse-docstring (str :doc))) "")))
 
 (defn print-columns [sep entries]
   (def left-column-width (util/max-by |(util/max-by length (0 $)) entries))
@@ -106,15 +109,20 @@
 (defn group [spec]
   # TODO: word wrap
   (def {:doc docstring :commands commands} spec)
-  (when docstring
-    (print-wrapped docstring desired-width)
+  (case (util/type+ docstring)
+    :tuple-parens (print-wrapped docstring desired-width)
+    :string       (print-wrapped docstring desired-width)
+    :struct       (when (docstring :doc) (print-wrapped (docstring :doc) desired-width))
+    :table        (when (docstring :doc) (print-wrapped (docstring :doc) desired-width))
     (print))
 
   (def commands (sorted-by 0 (pairs commands)))
 
   # TODO: bit of code duplication here
-  (print-columns " - " (seq [[name command] :in commands]
-    [[name] (docstring-summary command)])))
+
+  (case (util/type+ docstring)
+    :struct       (when (docstring :epilogue) (print) (print-wrapped (docstring :epilogue) desired-width))
+    :table        (when (docstring :epilogue) (print) (print-wrapped (docstring :epilogue) desired-width))))
 
 (defn- default-description [param]
   (case ((param :handler) :value)
@@ -128,7 +136,13 @@
         :pos positional-params
         :doc docstring} spec)
 
-  (def [summary details] (parse-docstring docstring))
+  (def [summary details]
+    (case (util/type+ docstring)
+      :string        (parse-docstring docstring)
+      :tuple-parens  (parse-docstring docstring)
+      :struct        (parse-docstring (docstring :doc))
+      :table         (parse-docstring (docstring :doc))
+      [nil nil]))
   (when summary
     (print-wrapped summary desired-width)
     (print))
@@ -160,4 +174,8 @@
   (unless (empty? named-arg-entries)
     (print "=== flags ===\n")
 
-    (print-columns " : " named-arg-entries)))
+    (print-columns " : " named-arg-entries))
+
+  (case (util/type+ docstring)
+    :struct (when (docstring :epilogue) (do (print "debug") (file/flush stdout) (print-wrapped (docstring :epilogue) desired-width)))
+    :table  (when (docstring :epilogue) (do (print "debug") (file/flush stdout) (print-wrapped (docstring :epilogue) desired-width)))))
