@@ -1,7 +1,7 @@
 # compile-time parser for the [--foo (optional :string)] DSL
 
-(use ./util)
-(use ./bridge)
+(import ./util)
+(import ./bridge)
 (import ./help)
 
 (defn- named-param? [token]
@@ -12,16 +12,16 @@
 (defn- goto-state [ctx next-state]
   (set (ctx :state) next-state))
 
-(defn- assert-unset [val] (assert (unset? val) "duplicate argument"))
+(defn- assert-unset [val] (assert (bridge/unset? val) "duplicate argument"))
 
 (defn- named-param-to-string [token]
   (if (named-param? token)
     (string token)
-    (assertf "expected named parameter, got %q" token)))
+    (util/assertf "expected named parameter, got %q" token)))
 
 (defn- named-params-from-keys [s]
   (catseq [key :keys s]
-    (case (type+ key)
+    (case (util/type+ key)
       :tuple-brackets (map named-param-to-string key)
       [(named-param-to-string key)])))
 
@@ -34,9 +34,9 @@
 
 (defn- tagged-variant-parser [name-or-names form]
   (def $tag-and-parser
-    (if (has? type+ form :tuple-brackets)
+    (if (util/has? util/type+ form :tuple-brackets)
       (do
-        (assertf (has? length form 2)
+        (util/assertf (util/has? length form 2)
           "expected tuple of two elements, got %q" form)
         (def [$tag $type] form)
         ~[,$tag ,$type])
@@ -57,20 +57,20 @@
   (eachp [name-or-names type-declaration] dict
     (def key (if (tuple? name-or-names)
       (do
-        (assertf (not (empty? name-or-names)) "unexpected token %q" name-or-names)
+        (util/assertf (not (empty? name-or-names)) "unexpected token %q" name-or-names)
         (def sym (gensym))
         (each name name-or-names
-          (putf! alias-remap (string name) sym "duplicate alias %q" name))
+          (util/putf! alias-remap (string name) sym "duplicate alias %q" name))
         sym)
       (do
         (def name name-or-names)
-        (putf! alias-remap (string name) name "duplicate alias %q" name)
+        (util/putf! alias-remap (string name) name "duplicate alias %q" name)
         name)))
     (def $type
       (if takes-value?
         (tagged-variant-parser name-or-names type-declaration)
         type-declaration))
-    (putf! types-for-param key $type "BUG: duplicate key %q" key))
+    (util/putf! types-for-param key $type "BUG: duplicate key %q" key))
 
   (defn parse-string [[alias-remap types-for-param] param-name value]
     (def key (alias-remap param-name))
@@ -84,7 +84,7 @@
 
   [additional-names
    takes-value?
-   ~[,(quote-keys-and-values alias-remap) ,(quote-keys types-for-param)]
+   ~[,(util/quote-keys-and-values alias-remap) ,(util/quote-keys types-for-param)]
    parse-string])
 
 # a type declaration can be an arbitrary expression. returns
@@ -106,14 +106,14 @@
 (defn- handle/required [type-declaration]
   (def [additional-names takes-value? $type parse-string] (get-parser type-declaration))
   [additional-names
-   {:init unset
+   {:init bridge/unset
     :value (if takes-value? :required :none)
     :type $type
     :update (fn [t name old new]
       (assert-unset old)
       (parse-string t name new))
     :finish (fn [val]
-     (when (unset? val)
+     (when (bridge/unset? val)
        (missing-required-argument))
      val)}])
 
@@ -124,37 +124,37 @@
   (def [additional-names handler] (handle/required type-declaration))
   [additional-names (struct/with-proto handler
     :value (rewrite-value handler :optional)
-    :finish (fn [val] (if (unset? val) default val)))])
+    :finish (fn [val] (if (bridge/unset? val) default val)))])
 
 (defn- handle/last+ [type-declaration]
   (def [additional-names handler] (handle/required type-declaration))
   [additional-names (struct/with-proto handler
     :value (rewrite-value handler :variadic+)
-    :update (fn [t name _ new] ((handler :update) t name unset-sentinel new)))])
+    :update (fn [t name _ new] ((handler :update) t name bridge/unset-sentinel new)))])
 
 (defn- handle/last [type-declaration &opt default]
   (def [additional-names handler] (handle/optional type-declaration default))
   [additional-names (struct/with-proto handler
     :value (rewrite-value handler :variadic)
-    :update (fn [t name _ new] ((handler :update) t name unset-sentinel new)))])
+    :update (fn [t name _ new] ((handler :update) t name bridge/unset-sentinel new)))])
 
 (defn- handle/flag []
   [[]
-   {:init unset
+   {:init bridge/unset
     :value :none
     :type nil
     :update (fn [_ _ old _] (assert-unset old) true)
     :finish (fn [val]
-     (if (unset? val) false val))}])
+     (if (bridge/unset? val) false val))}])
 
 (defn- handle/effect [f]
   [[]
-  {:init unset
+  {:init bridge/unset
    :value :none
    :type f
    :symless true
    :update (fn [[_ t] _ old _] (assert-unset old) t)
-   :finish (fn [val] (if (unset? val) nil (val)))}])
+   :finish (fn [val] (if (bridge/unset? val) nil (val)))}])
 
 (defn- handle/counted []
   [[]
@@ -235,7 +235,7 @@
     (errorf "unknown operation %q" op)))
 
 (defn- parse-handler [form]
-  (case (type+ form)
+  (case (util/type+ form)
     :tuple-parens (parse-form-handler form)
     :keyword (handle/required form)
     :struct (handle/required form)
@@ -253,7 +253,7 @@
     (if (empty? additional-names)
       names
       (do
-        (assertf (empty? names) "you must specify all aliases for %s inside {}" sym)
+        (util/assertf (empty? names) "you must specify all aliases for %s inside {}" sym)
         additional-names)))
 
   (def symless? (handler :symless))
@@ -273,7 +273,7 @@
   (def positional? (empty? names))
 
   (when positional?
-    (assertf (not symless?)
+    (util/assertf (not symless?)
       "positional argument needs a valid symbol")
     (assert (not= (ctx :variadic-positional) :greedy)
       "only the final positional parameter can have an escape handler")
@@ -311,10 +311,10 @@
   (if (empty? base) nil (symbol base)))
 
 (defn- new-param-state [spec-names]
-  (assertf (not (empty? spec-names))
+  (util/assertf (not (empty? spec-names))
     "unexpected token %q" spec-names)
   (def first-name (first spec-names))
-  (assertf (all symbol? spec-names)
+  (util/assertf (all symbol? spec-names)
     "unexpected token %q" spec-names)
 
   (def [sym param-names]
@@ -342,12 +342,12 @@
     :on-other (fn [self ctx expr]
       (when-let [handler (self :handler)]
         (errorf "multiple handlers specified for %s (got %q, already have %q)"
-          (display-name self) expr handler))
+          (bridge/display-name self) expr handler))
       (set (self :handler) expr))
     :on-eof (fn [self ctx] (finish-param ctx self nil))})
 
 (defn- set-ctx-doc [self ctx expr]
-  (assertf (nil? (ctx :doc)) "unexpected token %q" expr)
+  (util/assertf (nil? (ctx :doc)) "unexpected token %q" expr)
   (set (ctx :doc) expr))
 
 (def- state/pending
@@ -370,10 +370,10 @@
   (unless (nil? ((ctx :names) public-help-name))
     (break))
   (def default-help-names [public-help-name "-h" "-?"])
-  (def help-names (seq [name :in default-help-names :when (hasnt? (ctx :names) name)] name))
+  (def help-names (seq [name :in default-help-names :when (util/hasnt? (ctx :names) name)] name))
   (unless (empty? help-names)
     (def [_ handler] (handle/effect (defn []
-      (help/simple (dyn *spec*))
+      (help/simple (dyn bridge/*spec*))
       (os/exit 0))))
     (def help-param
       {:names [public-help-name]
@@ -381,9 +381,9 @@
        :handler handler})
     (def help-sym (gensym))
     (each name help-names
-      (put! (ctx :names) name help-sym))
-    (put! (ctx :named-params) help-sym help-param)
-    (put! (ctx :params) help-sym help-param)))
+      (util/put! (ctx :names) name help-sym))
+    (util/put! (ctx :named-params) help-sym help-param)
+    (util/put! (ctx :params) help-sym help-param)))
 
 # Returns an abstract syntax tree
 # that can be evaluated to produce
@@ -401,7 +401,7 @@
 
   (each token spec
     (def state (ctx :state))
-    (case (type+ token)
+    (case (util/type+ token)
       :string (:on-string state ctx token)
       :tuple-brackets (:on-param state ctx token)
       :symbol (:on-param state ctx [token])

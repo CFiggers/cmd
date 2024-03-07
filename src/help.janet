@@ -1,5 +1,5 @@
-(use ./util)
-(use ./bridge)
+(import ./util)
+(import ./bridge)
 
 # janet has no built-in way to detect the terminal width.
 # might be nice to allow the user to set a dynamic variable,
@@ -93,7 +93,7 @@
   (or (first (parse-docstring str)) ""))
 
 (defn print-columns [sep entries]
-  (def left-column-width (max-by |(max-by length (0 $)) entries))
+  (def left-column-width (util/max-by |(util/max-by length (0 $)) entries))
   (each [lefts docstring] entries
     (def rights (word-wrap docstring (max (/ desired-width 2) (- desired-width left-column-width))))
 
@@ -134,7 +134,7 @@
     (print))
 
   (prin "  " (executable-name))
-  (each subcommand (dyn *subcommand-path* [])
+  (each subcommand (dyn bridge/*subcommand-path* [])
     (print " " subcommand))
   (each param positional-params
     (prin " ")
@@ -151,7 +151,7 @@
       (def names (sorted-by |(string/triml $ "-") names))
       (def formatted-names (map |(format-named-param $ (param :handler)) names))
       # 2 is the length of the initial "  " and the separator ", "
-      (def total-length (sum-by |(+ (length $) 2) formatted-names))
+      (def total-length (util/sum-by |(+ (length $) 2) formatted-names))
       (def lines (if (<= total-length (/ desired-width 3))
         [(string/join formatted-names ", ")]
         formatted-names))

@@ -44,8 +44,8 @@
 (defn has? [p x y]
   (= (p x) y))
 
-(defmacro catseq [& args]
-  ~(mapcat |$ (seq ,;args)))
+# (defmacro catseq [& args]
+#   ~(mapcat |$ (seq ,;args)))
 
 (defn ^ [chars]
   ~(* (not (set ,chars)) 1))

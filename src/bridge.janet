@@ -1,6 +1,6 @@
 # values shared between the param parser and the arg parser
 
-(use ./util)
+(import ./util)
 
 (def *spec* (keyword (gensym)))
 (def *subcommand-path* (keyword (gensym)))
@@ -38,7 +38,7 @@
     (nil? parser) ["" nil]
     (or (function? parser) (cfunction? parser)) ["_" parser]
     (keyword? parser) (builtin-type-parser parser)
-    (and (tuple? parser) (has? length parser 2) (string? (first parser)))
+    (and (tuple? parser) (util/has? length parser 2) (string? (first parser)))
       (let [[arg-name parser] parser]
         (def [_ parser] (get-simple-type parser))
         [arg-name parser])
@@ -92,6 +92,6 @@
 
 (defn bake-spec [ctx]
   {:named (quote-named-params (ctx :named-params))
-   :names (quote-values (ctx :names))
+   :names (util/quote-values (ctx :names))
    :pos (quote-positional-params (ctx :positional-params))
    :doc (ctx :doc)})

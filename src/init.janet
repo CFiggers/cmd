@@ -1,8 +1,8 @@
-(use ./util)
+(import ./util)
 (import ./help)
-(use ./param-parser)
-(use ./arg-parser)
-(use ./bridge)
+(import ./param-parser)
+(import ./arg-parser)
+(import ./bridge)
 
 (defn print-help [spec]
   (if (spec :commands)
@@ -35,43 +35,43 @@
           [(tuple/brackets first ;second) rest]
           [first [second ;rest]]))))
 
-  (unless (has? type+ spec :tuple-brackets)
+  (unless (util/has? util/type+ spec :tuple-brackets)
     (errorf "expected bracketed list of parameters, got %q" spec))
-  (def spec (parse-specification spec))
+  (def spec (param-parser/parse-specification spec))
   (with-syms [$args $spec]
-    ~(let [,$spec ,(bake-spec spec)]
+    ~(let [,$spec ,(bridge/bake-spec spec)]
       {:fn (fn [,$args]
-        ,(assignment spec $spec $args)
+        ,(arg-parser/assignment spec $spec $args)
         ,;body)
        :doc (,$spec :doc)
        :help (fn [] (,help/simple ,$spec))})))
 
 (defn- extend-subcommand-path [command]
-  [;(dyn *subcommand-path* []) command])
+  [;(dyn bridge/*subcommand-path* []) command])
 
 (defn- rewrite-last-subcommand-entry [new]
-  (def current-path (dyn *subcommand-path* []))
+  (def current-path (dyn bridge/*subcommand-path* []))
   (def but-last (tuple/slice current-path 0 (- (length current-path) 1)))
   [;but-last new])
 
 (def- help-command (simple-command "explain a subcommand"
   [command (optional ["COMMAND" :string])]
-  (def spec (dyn *spec*))
+  (def spec (dyn bridge/*spec*))
   (if command
     (if-let [subcommand ((spec :commands) command)]
-      (with-dyns [*subcommand-path* (rewrite-last-subcommand-entry command)]
+      (with-dyns [bridge/*subcommand-path* (rewrite-last-subcommand-entry command)]
         ((subcommand :help)))
       (print-group-help-and-error spec "unknown subcommand %s" command))
     (help/group spec))))
 
 (defmacro spec [& s]
-  (bake-spec (parse-specification s)))
+  (bridge/bake-spec (param-parser/parse-specification s)))
 
-(def args args)
+(def args arg-parser/args)
 (def parse parse)
 
 (defn run [command args]
-  (def f (assertf (command :fn) "invalid command %q" command))
+  (def f (util/assertf (command :fn) "invalid command %q" command))
   (f args))
 
 (defmacro group [& spec]
@@ -100,8 +100,8 @@
         (match args
           [first & rest]
             (if-let [command (,$commands first)]
-              (with-dyns [,*spec* ,$spec
-                          ,*subcommand-path* (,extend-subcommand-path first)]
+              (with-dyns [,bridge/*spec* ,$spec
+                          ,bridge/*subcommand-path* (,extend-subcommand-path first)]
                 (,run command rest))
               (,print-group-help-and-error ,$spec "unknown subcommand %s" first))
           [] (,print-group-help-and-error ,$spec)))
@@ -122,7 +122,7 @@
   [name
    (fn [str]
      (def matches (peg/match peg str))
-     (if (and (not (nil? matches)) (has? length matches 1))
+     (if (and (not (nil? matches)) (util/has? length matches 1))
        (first matches)
        (errorf "unable to parse %q" str)))])
 
@@ -132,5 +132,5 @@
   ~(def ,name (as-macro ,fn ,;args)))
 
 (defmacro def [& spec]
-  (def spec (parse-specification spec))
-  (assignment spec nil ~(,args)))
+  (def spec (param-parser/parse-specification spec))
+  (arg-parser/assignment spec nil ~(,args)))

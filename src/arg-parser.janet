@@ -1,8 +1,8 @@
 # runtime parser for actual arguments
 
-(use ./util)
-(use ./bridge)
-(use ./help)
+(import ./util)
+(import ./bridge)
+(import ./help)
 
 # param: {sym handler}
 (defn- assign-positional-args [args params refs]
@@ -29,8 +29,8 @@
   (defn assign [{:handler handler :sym sym} arg]
     (def ref (assert (refs sym)))
     (def {:update handle :type t} handler)
-    (try-with-context sym errors
-      (set-ref ref (handle t nil (get-ref ref) arg))))
+    (util/try-with-context sym errors
+      (util/set-ref ref (handle t nil (util/get-ref ref) arg))))
 
   (var arg-index 0)
   (defn take-arg []
@@ -44,7 +44,7 @@
         (if (< arg-index num-args)
           (assign param (take-arg))
           (do
-            (table/push errors "" "not enough arguments")
+            (util/table/push errors "" "not enough arguments")
             (break))))
       :optional
         (when (> num-optional-args 0)
@@ -58,14 +58,14 @@
       _ (assert false)))
 
   (when (< arg-index num-args)
-    (table/push errors "" (string/format "unexpected argument %s" (args arg-index))))
+    (util/table/push errors "" (string/format "unexpected argument %s" (args arg-index))))
   errors)
 
 # this is the absolute worst kind of macro
 (defmacro- consume [name expr]
   ~(let [{:update handle :type t} handler]
-    (try-with-context ,name errors
-      (set-ref ref (handle t (if (string? ,name) ,name) (get-ref ref) ,expr)))))
+    (util/try-with-context ,name errors
+      (util/set-ref ref (handle t (if (string? ,name) ,name) (util/get-ref ref) ,expr)))))
 
 # args: [string]
 # spec:
@@ -113,7 +113,7 @@
       (let [sym (param-names arg)]
         # TODO: nice error message for negative number
         (if (nil? sym)
-          (table/push errors arg "unknown parameter")
+          (util/table/push errors arg "unknown parameter")
           (let [{:handler handler} (assert (named-params sym))
                 {:value value-handling} handler]
             (if (= value-handling :soft-escape)
@@ -124,11 +124,11 @@
                   :none (consume arg nil)
                   :greedy (while (< i (length args)) (consume arg (next-arg)))
                   (consume arg (next-arg))))))))))
-  (table/union errors (assign-positional-args positional-args positional-params refs))
+  (util/table/union errors (assign-positional-args positional-args positional-params refs))
   errors)
 
-(def- -foo=bar ~(* (<- (* "-" (some ,(^ "= ")))) "=" (<- (to -1))))
-(def- -xyz ~(* "-" (group (some (<- ,(^ "- ")))) -1))
+(def- -foo=bar ~(* (<- (* "-" (some ,(util/^ "= ")))) "=" (<- (to -1))))
+(def- -xyz ~(* "-" (group (some (<- ,(util/^ "- ")))) -1))
 
 (defn- split-short-flags [arg]
   (if-let [[args] (peg/match -xyz arg)]
@@ -179,13 +179,13 @@
       (seq [sym :in syms
             :let [$sym (gensyms sym)
                   param (params sym)
-                  name (display-name param)
+                  name (bridge/display-name param)
                   handler (param :handler)]]
         ~(as-macro
-          ,try-with-context ,name ,$errors
+          ,util/try-with-context ,name ,$errors
           (,(handler :finish) ,$sym))))
     ~(def [,;public-syms]
-      (let [,$spec ,(or baked-spec (bake-spec spec))] (with-dyns [,*spec* ,$spec]
+      (let [,$spec ,(or baked-spec (bridge/bake-spec spec))] (with-dyns [,bridge/*spec* ,$spec]
         ,;var-declarations
         (def ,$errors (,parse-args
           ,args
@@ -209,12 +209,12 @@
     sym (handler :init)))
   (def refs (tabseq [sym :keys handlers]
     sym {:get (fn [] (scope sym)) :set (fn [x] (put scope sym x))}))
-  (with-dyns [*spec* spec]
+  (with-dyns [bridge/*spec* spec]
     (def errors (parse-args args spec refs))
     (def result @{})
     (eachp [sym val] scope
       (def handler (assert (handlers sym)))
-      (try-with-context sym errors
+      (util/try-with-context sym errors
         (put result (keyword sym) ((handler :finish) val))))
     (if (empty? errors)
       result
