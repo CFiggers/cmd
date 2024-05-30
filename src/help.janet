@@ -4,7 +4,7 @@
 # janet has no built-in way to detect the terminal width.
 # might be nice to allow the user to set a dynamic variable,
 # though...
-(def- desired-width 80)
+(def- desired-width 100)
 
 (defn- right-pad [str len]
   (string str (string/repeat " " (max 0 (- len (length str))))))
@@ -65,15 +65,16 @@
   (def arg (format-arg-string handler str))
   (wrap-handling
     (if arg (string str " " arg) str)
-    (handler :value)))
+    :required))
 
 (defn- format-positional-param [handler]
   (wrap-handling
     (format-arg-string handler)
     (handler :value)))
 
-(defn- print-wrapped [str len]
+(defn- print-wrapped [str len &opt prefix]
   (each line (word-wrap str len)
+    (when prefix (prin prefix))
     (print line)))
 
 (defn- lines [str]
@@ -97,14 +98,22 @@
     :table  (or (first (parse-docstring (str :doc))) "")))
 
 (defn print-columns [sep entries]
-  (def left-column-width (util/max-by |(util/max-by length (0 $)) entries))
+  (def left-column-width 
+    (util/max-by |(util/max-by length (0 $)) entries))
+  
   (each [lefts docstring] entries
-    (def rights (word-wrap docstring (max (/ desired-width 2) (- desired-width left-column-width))))
+    (def rights 
+      (word-wrap docstring (max (/ desired-width 2) 
+                                (- desired-width left-column-width))))
 
     (zip-lines lefts rights
                (fn [first? last? left right]
-                 (def sep (if (empty? right) "" (if first? sep (string/repeat " " (length sep)))))
-                 (def pad-to (if (empty? right) 0 (+ left-column-width (if first? 0 2))))
+                 (def sep 
+                   (if (empty? right) "" (if first? sep (string/repeat " " (length sep)))))
+                 
+                 (def pad-to 
+                   (if (empty? right) 0 (+ left-column-width (if first? 0 2))))
+                 
                  (print "  " (right-pad left pad-to) sep right)))))
 
 (defn group [spec]
@@ -116,20 +125,27 @@
   (case (util/type+ docstring)
     :tuple-parens (print-wrapped docstring desired-width)
     :string       (print-wrapped docstring desired-width)
-    :struct       (when (docstring :doc) (print-wrapped (docstring :doc) desired-width))
-    :table        (when (docstring :doc) (print-wrapped (docstring :doc) desired-width))
+    :struct       (when (docstring :doc) 
+                    (print-wrapped (docstring :doc) desired-width))
+    :table        (when (docstring :doc) 
+                    (print-wrapped (docstring :doc) desired-width))
     (print))
 
   (print "\nCommands:\n")
   (def commands (sorted-by 0 (pairs commands)))
 
   # TODO: bit of code duplication here
-  (print-columns "      " (seq [[name command] :in commands]
-                            [[name] (docstring-summary command)]))
+  (print-columns "      "
+                 (seq [[name command] :in commands]
+                   [[name] (docstring-summary command)]))
 
   (case (util/type+ docstring)
-    :struct       (when (docstring :epilogue) (print) (print-wrapped (docstring :epilogue) desired-width))
-    :table        (when (docstring :epilogue) (print) (print-wrapped (docstring :epilogue) desired-width)))
+    :struct       (when (docstring :epilogue) 
+                    (print) 
+                    (print-wrapped (docstring :epilogue) desired-width))
+    :table        (when (docstring :epilogue) 
+                    (print)
+                    (print-wrapped (docstring :epilogue) desired-width)))
   
   (file/write stdout outbuf)
   (setdyn :out stdout))
@@ -137,8 +153,7 @@
 (defn- default-description [param]
   (case ((param :handler) :value)
     :soft-escape "Treat all subsequent arguments as positional"
-    ""
-    ))
+    ""))
 
 (defn simple [spec]
   (def outbuf @"")
@@ -149,6 +164,17 @@
         :pos positional-params
         :doc docstring} spec)
 
+  (prin "Usage: " (executable-name))
+  
+  (each subcommand (dyn bridge/*subcommand-path* [])
+    (prin " " subcommand))
+  
+  (each param positional-params
+    (prin " ")
+    (prin (format-positional-param (param :handler))))
+  
+  (print "\n")
+
   (def [summary details]
     (case (util/type+ docstring)
       :string        (parse-docstring docstring)
@@ -156,17 +182,10 @@
       :struct        (parse-docstring (docstring :doc))
       :table         (parse-docstring (docstring :doc))
       [nil nil]))
-  (when summary
-    (print-wrapped summary desired-width)
+  
+  (when summary 
+    (print-wrapped summary desired-width "  ")
     (print))
-
-  (prin "  " (executable-name))
-  (each subcommand (dyn bridge/*subcommand-path* [])
-    (print " " subcommand))
-  (each param positional-params
-    (prin " ")
-    (prin (format-positional-param (param :handler))))
-  (print "\n")
 
   (when details
     (print-wrapped details desired-width)
@@ -180,18 +199,22 @@
       # 2 is the length of the initial "  " and the separator ", "
       (def total-length (util/sum-by |(+ (length $) 2) formatted-names))
       (def lines (if (<= total-length (/ desired-width 3))
-        [(string/join formatted-names ", ")]
-        formatted-names))
+                   [(string/join formatted-names ", ")]
+                   formatted-names))
       [lines (or (param :doc) (default-description param))]))
 
   (unless (empty? named-arg-entries)
-    (print "=== flags ===\n")
+    (print "Options:")
 
-    (print-columns " : " named-arg-entries))
+    (print-columns "   " named-arg-entries))
 
   (case (util/type+ docstring)
-    :struct (when (docstring :epilogue) (do (print "debug") (file/flush stdout) (print-wrapped (docstring :epilogue) desired-width)))
-    :table  (when (docstring :epilogue) (do (print "debug") (file/flush stdout) (print-wrapped (docstring :epilogue) desired-width))))
+    :struct (when (docstring :epilogue) 
+              (do (file/flush stdout)
+                  (print-wrapped (docstring :epilogue) desired-width)))
+    :table  (when (docstring :epilogue) 
+              (do (file/flush stdout)
+                  (print-wrapped (docstring :epilogue) desired-width))))
 
   (file/write stdout outbuf)
   (setdyn :out stdout))
