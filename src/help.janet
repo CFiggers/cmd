@@ -25,7 +25,7 @@
   (map |(string pad $) lines))
 
 (defn- word-wrap [str len]
-  (mapcat |(word-wrap-line $ len) (string/split "\n" str)))
+  (mapcat |(word-wrap-line $ len) (string/split "\n" (or str ""))))
 
 (defn- zip-lines [lefts rights f]
   (def end (max (length lefts) (length rights)))
@@ -140,12 +140,11 @@
                    [[name] (docstring-summary command)]))
 
   (case (util/type+ docstring)
-    :struct       (when (docstring :epilogue) 
-                    (print) 
+    :struct       (when (docstring :epilogue)
                     (print-wrapped (docstring :epilogue) desired-width))
-    :table        (when (docstring :epilogue) 
-                    (print)
+    :table        (when (docstring :epilogue)
                     (print-wrapped (docstring :epilogue) desired-width)))
+  (print)
   
   (file/write stdout outbuf)
   (setdyn :out stdout))
